@@ -7,6 +7,8 @@ import Queue
 import ssl
 import argparse
 
+globalWorkDone = False
+
 # This thread will read data from our input file to the data in queue.
 # Since the file is a finite length, we actually know for sure when this
 # thread finishes. It can report as much to the outside world
@@ -17,7 +19,7 @@ class fileReader(Thread):
 		self.done = False
 		self.fileQueue = fileQueue
 		self.i = 0
-	def isDone():
+	def isDone(self):
 		return self.done
 	def run(self):
 		with open(self.fileName, 'r') as f:
@@ -26,6 +28,7 @@ class fileReader(Thread):
 				self.i = self.i + 1
 		self.done = True
 		print("fileReader done, added {} lines.".format(self.i))
+		self.fileQueue.put(None)
 
 # fileWriter is a bit harder - we must explicity tell it when its done.
 # As long as we do not call procDone(), the fileWriter object will continue to poll the queue
@@ -38,7 +41,7 @@ class fileWriter(Thread):
 		self.done = False
 		self.fileQueue = fileQueue
 		self.i = 0
-	def procDone():
+	def procDone(self):
 		self.done = True
 	def run(self):
 		if not self.fileName == None:
@@ -61,14 +64,24 @@ class serverPoller(Thread):
 		self.inQueue = inputQueue
 		self.outQueue = outputQueue
 		self.done = False
-	def run():
-		while true:
+	def run(self):
+		global globalWorkDone
+		print("\tinit serverPoller...")
+		while not globalWorkDone:
+			print("\tget host address...")
 			host = self.inQueue.get()
+			if host == None:
+				globalWorkDone = True
+				break
 			port = 25560
+			print("\tconnecting...")
 			s = socket.socket()
 			s.connect((host, port))
-			outputQueue.put(s.recv(4096))
+			gotString = s.recv(4096)
+			print("\tgot {}".format(gotString))
+			self.outQueue.put(gotString)
 			self.inQueue.task_done()
+			s.close()
 
 def main():
 	parser = argparse.ArgumentParser()
@@ -76,8 +89,8 @@ def main():
 	parser.add_argument('-o', '--outputFile', help='Location of the file that will store the polled info. Stdout if none.')
 	parser.add_argument('-t', '--threads', help='Number of threads to run', type=int, default=1)
 	args = parser.parse_args()
-	addrQueue = Queue()
-	resultQueue = Queue()
+	addrQueue = Queue.Queue()
+	resultQueue = Queue.Queue()
 	myReader = fileReader(args.inputFile, addrQueue)
 	myWriter = fileWriter(args.outputFile, resultQueue)
 	myReader.start()
