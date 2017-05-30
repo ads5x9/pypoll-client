@@ -25,7 +25,7 @@ class fileReader(Thread):
 				self.fileQueue.put(line.rstrip())
 				self.i = self.i + 1
 		self.done = True
-		print("fileReader done, added {} lines.".format(self.i)
+		print("fileReader done, added {} lines.".format(self.i))
 
 # fileWriter is a bit harder - we must explicity tell it when its done.
 # As long as we do not call procDone(), the fileWriter object will continue to poll the queue
