@@ -23,7 +23,9 @@ class fileReader(Thread):
 		return self.done
 	def run(self):
 		with open(self.fileName, 'r') as f:
-			for line in f:
+			for line in f:			# While we're here, we should probably take some time to sanitize our input.
+				if line.rstrip() == '':	# if empty line, skip it
+					continue
 				self.fileQueue.put(line.rstrip())
 				self.i = self.i + 1
 		self.done = True
@@ -59,26 +61,27 @@ class fileWriter(Thread):
 				self.fileQueue.task_done()
 
 class serverPoller(Thread):
-	def __init__(self, inputQueue, outputQueue):
+	def __init__(self, name, inputQueue, outputQueue):
 		Thread.__init__(self)
 		self.inQueue = inputQueue
 		self.outQueue = outputQueue
 		self.done = False
+		self.name = name
 	def run(self):
 		global globalWorkDone
-		print("\tinit serverPoller...")
+		#print("\tinit serverPoller...")
 		while not globalWorkDone:
-			print("\tget host address...")
+			#print("\tget host address...")
 			host = self.inQueue.get()
 			if host == None:
 				globalWorkDone = True
 				break
 			port = 25560
-			print("\tconnecting...")
+			print("\tWorker {} connecting to {}...".format(self.name, host))
 			s = socket.socket()
 			s.connect((host, port))
 			gotString = s.recv(4096)
-			print("\tgot {}".format(gotString))
+			print("\tWorker {} got {}".format(self.name, gotString))
 			self.outQueue.put(gotString)
 			self.inQueue.task_done()
 			s.close()
@@ -99,7 +102,7 @@ def main():
 	print("writer start")
 	threads = []
 	for i in xrange(args.threads):
-		threads.append(serverPoller(addrQueue, resultQueue))
+		threads.append(serverPoller(i, addrQueue, resultQueue))
 		threads[i].start()
 		print("worker {} start".format(i))
 	myReader.join()
