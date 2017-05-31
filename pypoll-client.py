@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-
+from __future__ import print_function
 import socket
 from threading import Thread
 import Queue
@@ -8,6 +8,10 @@ import ssl
 import argparse
 
 globalWorkDone = False
+
+def eprint(*args, **kwargs):
+	import sys
+	print(*args, file=sys.stderr, **kwargs)
 
 # This thread will read data from our input file to the data in queue.
 # Since the file is a finite length, we actually know for sure when this
@@ -29,7 +33,6 @@ class fileReader(Thread):
 				self.fileQueue.put(line.rstrip())
 				self.i = self.i + 1
 		self.done = True
-		print("fileReader done, added {} lines.".format(self.i))
 		self.fileQueue.put(None)
 
 # fileWriter is a bit harder - we must explicity tell it when its done.
@@ -69,22 +72,23 @@ class serverPoller(Thread):
 		self.name = name
 	def run(self):
 		global globalWorkDone
-		#print("\tinit serverPoller...")
 		while not globalWorkDone:
-			#print("\tget host address...")
 			host = self.inQueue.get()
 			if host == None:
 				globalWorkDone = True
 				break
 			port = 25560
-			print("\tWorker {} connecting to {}...".format(self.name, host))
 			s = socket.socket()
-			s.connect((host, port))
-			gotString = s.recv(4096)
-			print("\tWorker {} got {}".format(self.name, gotString))
-			self.outQueue.put(gotString)
-			self.inQueue.task_done()
-			s.close()
+			s.settimeout(10)
+			try:
+				s.connect((host, port))
+				gotString = s.recv(8192)
+				self.outQueue.put(gotString)
+			except socket.timeout as e:
+				eprint("Failed to connect to {} - the connection timed out.".format(host))
+			finally:
+				self.inQueue.task_done()
+				s.close()
 
 def main():
 	parser = argparse.ArgumentParser()
@@ -97,23 +101,17 @@ def main():
 	myReader = fileReader(args.inputFile, addrQueue)
 	myWriter = fileWriter(args.outputFile, resultQueue)
 	myReader.start()
-	print("reader start")
 	myWriter.start()
-	print("writer start")
 	threads = []
 	for i in xrange(args.threads):
 		threads.append(serverPoller(i, addrQueue, resultQueue))
 		threads[i].start()
-		print("worker {} start".format(i))
 	myReader.join()
-	print("reader join()")
 	for worker in threads:
 		worker.join()
-		print("another worker join")
 	myWriter.procDone()
 	resultQueue.put("jobdone")
 
 
 if __name__ == "__main__":
 	main()
-
